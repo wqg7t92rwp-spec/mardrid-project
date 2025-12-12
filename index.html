@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>马德里纪念碑巡游 (v2.15 稳定版)</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+
+<style>
+    body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif; overflow: hidden; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
+    
+    /* 标记样式 */
+    .marker {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background-color: #A52A2A; 
+        border: 2px solid #fff;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5); 
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .marker:hover {
+        transform: scale(1.2);
+        background-color: #ff0000;
+    }
+
+    /* 弹窗样式优化 */
+    .mapboxgl-popup-content {
+        background-color: #fff;
+        color: #333;
+        padding: 0; /*去掉默认内边距，为了图片贴边*/
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        width: 320px;
+        max-width: 90vw;
+        max-height: 400px; /* 限制最大高度 */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden; /* 防止圆角溢出 */
+    }
+    
+    .mapboxgl-popup-close-button {
+        display: none; /* 隐藏默认关闭按钮 */
+    }
+
+    /* 图片容器 */
+    .popup-image-container {
+        width: 100%;
+        height: 150px; 
+        flex-shrink: 0;
+        background-color: #eee;
+    }
+    .popup-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover; 
+    }
+    
+    /* 内容区域滚动 */
+    .popup-text-area {
+        padding: 15px;
+        overflow-y: auto; /* 内容过长时允许滚动 */
+        flex-grow: 1;
+    }
+
+    .popup-title {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-top: 0;
+        margin-bottom: 10px;
+        color: #A52A2A;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+    }
+    
+    /* 列表样式优化 */
+    .popup-body ul {
+        padding-left: 20px;
+        margin: 0;
+    }
+    .popup-body li {
+        margin-bottom: 8px;
+        font-size: 0.9em;
+        line-height: 1.4;
+    }
+
+    .close-tour-btn {
+        background-color: #A52A2A;
+        color: white;
+        border: none;
+        padding: 12px;
+        cursor: pointer;
+        font-weight: bold;
+        text-align: center;
+        width: 100%;
+        flex-shrink: 0;
+        transition: background-color 0.3s;
+    }
+    .close-tour-btn:hover {
+        background-color: #800000;
+    }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script>
+    // *** 1. 您的 Mapbox Token ***
+    // ⚠️ 如果地图还是白屏，请务必去 mapbox.com 注册一个账号，复制您自己的 "Default public token" 替换下面这行引号里的内容。
+    mapboxgl.accessToken = 'pk.eyJ1IjoiamVyZW15bWlyYWNsZSIsImEiOiJjbWozN2o5ODYweDF6M2RyN3NyMGVrNmxiIn0.BrrzfegSr1shj34MQNZf3g'; 
+
+    // *** 2. 纪念碑数据 (已更新为您提供的英文简介，并格式化为列表) ***
+    const monumentData = [
+        { 
+            key: "cortes", 
+            name: "Bust of Hernán Cortés", 
+            lng: -3.7256, 
+            lat: 40.4368, 
+            description: `
+                <ul>
+                    <li><strong>Hernán Cortés (1485–1547)</strong></li>
+                    <li>Led the Spanish conquest of the Aztec Empire in Mexico (1519–1521), a cornerstone event in the expansion of Spain’s American empire.</li>
+                    <li>Operated as a military commander and colonial administrator, establishing Spanish control and institutions in New Spain.</li>
+                    <li>Campaign involved warfare, alliances and coercion, with severe demographic and social consequences for Indigenous communities (violence, displacement, exploitation).</li>
+                    <li>Seized and redistributed wealth/resources and helped entrench the colonial extraction system that followed conquest.</li>
+                    <li>Frequently framed in traditional Spanish/European narratives as a decisive “conqueror” and agent of imperial expansion, while widely contested in contemporary historical and postcolonial interpretation.</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Hernan_Cortes_Bust_Madrid.jpg/300px-Hernan_Cortes_Bust_Madrid.jpg" 
+        },
+        { 
+            key: "balboa", 
+            name: "Monument to Vasco Núñez de Balboa", 
+            lng: -3.7212, 
+            lat: 40.4380, 
+            description: `
+                <ul>
+                    <li><strong>Vasco Núñez de Balboa (1475-1519)</strong></li>
+                    <li>Helped establish Spain’s presence in the Caribbean + mainland Central America.</li>
+                    <li>Acted both as explorer and colonial governor.</li>
+                    <li>War, violence, forced labour, tribute demands towards indigenous communities.</li>
+                    <li>Led European discovery of Pacific ocean in 1513.</li>
+                    <li>Honoured for his role in discovery and expansion of Spanish Empire in traditional European/Spanish historical narrative.</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Monumento_a_Vasco_N%C3%BA%C3%B1ez_de_Balboa_%28Madrid%29_02.jpg/300px-Monumento_a_Vasco_N%C3%BA%C3%B1ez_de_Balboa_%28Madrid%29_02.jpg" 
+        },
+        { 
+            key: "columbus", 
+            name: "Monument to Christopher Columbus", 
+            lng: -3.6905, 
+            lat: 40.4252, 
+            description: `
+                <ul>
+                    <li>Columbus’ voyage in 1492 initiated European colonisation of the Americas.</li>
+                    <li>Inspired model of discovery and claiming of indigenous lands for European possession.</li>
+                    <li>Established systems of exploitation during time as governor in the Caribbean - led to demographic collapses.</li>
+                    <li>Helped create link between Europe, Americas and Africa through new trade and power networks - later would become network for the transatlantic slave trade.</li>
+                    <li>Glorification of his discoveries in this monument.</li>
+                </ul>`, 
+            imageURL: "https://imgur.com/a/YRpJAXu" 
+        },
+        { 
+            key: "jorgeJuan", 
+            name: "Monument to Jorge Juan", 
+            lng: -3.6882, 
+            lat: 40.4245, 
+            description: `
+                <ul>
+                    <li><strong>Jorge Juan (1713–1773)</strong> - Spanish naval officer, scientist, and Enlightenment-era reformer; central to modernising Spain’s navy and technical institutions.</li>
+                    <li>Served the Crown in imperial contexts, including missions tied to Spain’s maritime power and overseas interests.</li>
+                    <li>Conducted major work in geodesy/astronomy and navigation; participated in the French-led expedition to measure the Earth near the equator (in today’s Ecuador), helping advance European scientific knowledge used for mapping and navigation.</li>
+                    <li>Associated with naval engineering, shipbuilding reform, and intelligence-gathering on foreign naval capabilities, strengthening Spain’s strategic reach.</li>
+                    <li>Commonly commemorated in Spanish public memory as a leading figure of scientific progress and naval modernisation, with less emphasis in popular narratives on how maritime science enabled imperial expansion.</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Monumento_a_Jorge_Juan_%28Madrid%29.jpg/300px-Monumento_a_Jorge_Juan_%28Madrid%29.jpg" 
+        },
+        { 
+            key: "neptuno", 
+            name: "Fountain of Neptuno", 
+            lng: -3.6941, 
+            lat: 40.4152, 
+            description: `
+                <strong>Why</strong><br>
+                To Project "Total Control": The goal was to show that the Spanish Crown possessed dominion over every aspect of the world: the Seas (Neptuno), the Earth (Cibeles), and the Mind/Arts (Apolo)<br><br>
+                <strong>Significance</strong><br>
+                Triad of Imperial Governance: symbolizing the three pillars needed to maintain the colonies in the 1700s:
+                <ul>
+                    <li><strong>Maritime Defense (Neptuno):</strong> Acknowledged that the empire's survival now depended entirely on a modernized Navy protecting the trade routes from the rising British Empire.</li>
+                    <li><strong>Economic Reform (Cibeles):</strong> Symbolized the shift in colonial policy from simple extraction (mining silver) to production (agriculture). The Crown was actively pushing for the cultivation of tobacco, sugar, and cacao to boost the economy.</li>
+                    <li><strong>Scientific Mastery (Apolo):</strong> Positioned next to the Royal Botanical Garden and the Natural History Museum (now the Prado).</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Fuente_de_Neptuno_%28Madrid%29_01.jpg/300px-Fuente_de_Neptuno_%28Madrid%29_01.jpg" 
+        },
+        { 
+            key: "bazan", 
+            name: "Monument of Álvaro de Bazán", 
+            lng: -3.7104, 
+            lat: 40.4151, 
+            description: `
+                <strong>WHY?</strong>
+                <ul>
+                    <li><strong>Protected the Treasure Fleets:</strong> He implemented and perfected the convoy system, grouping merchant ships together with armed protection.</li>
+                    <li><strong>Designed the War Galleon:</strong> He helped develop the galleon, a new type of heavily armed ship capable of surviving long Atlantic Ocean crossings.</li>
+                    <li><strong>Secured the Atlantic Route:</strong> He conquered the Azores islands (1582–1583).</li>
+                </ul>
+                <strong>SIGNIFICANCE</strong>
+                <ul>
+                    <li><strong>Funded the Capital:</strong> By ensuring the safe arrival of American silver, he directly funded the Spanish Crown and the civic governance of Madrid.</li>
+                    <li><strong>Global Stability:</strong> His naval supremacy allowed Spain to maintain a stable communication link with its vast empire (from Mexico to Manila) for decades.</li>
+                    <li><strong>Symbol of Power:</strong> His statue stands in the center of the civic square to remind the city that Madrid's political power was entirely dependent on its naval power.</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/%C3%81lvaro_de_Baz%C3%A1n%27s_monument%2C_Madrid_01.jpg/300px-%C3%81lvaro_de_Baz%C3%A1n%27s_monument%2C_Madrid_01.jpg" 
+        },
+        { 
+            key: "cuba", 
+            name: "Monument to Cuba", 
+            lng: -3.6815, 
+            lat: 40.4193, 
+            description: `
+                <strong>Monument in El Retiro</strong>
+                <ul>
+                    <li>Statues of Columbus, Isabella I and the female personification of Cuba</li>
+                    <li>Cuban and spanish coat of arms</li>
+                    <li>Sculptures of exotic Cuban animals</li>
+                    <li>The hull of a ship is coming out on both sides</li>
+                    <li>Opened 1952</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Monumento_a_Cuba_%28Madrid%29.jpg/300px-Monumento_a_Cuba_%28Madrid%29.jpg" 
+        },
+        { 
+            key: "discovery", 
+            name: "Monument to the Discovery of America", 
+            lng: -3.6882, 
+            lat: 40.4248, 
+            description: `
+                <ul>
+                    <li>Built in 1977</li>
+                    <li>Has reliefs and scriptures on it</li>
+                    <li>Describes the history of how Columbus discovered América</li>
+                    <li>It pays tribute to the ocean and exploration</li>
+                    <li>It’s three blocks are a representation of Spain, The Canary Islands and América</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Monumento_al_Descubrimiento_de_Am%C3%A9rica_1.jpg/300px-Monumento_al_Descubrimiento_de_Am%C3%A9rica_1.jpg" 
+        },
+        { 
+            key: "lezo", 
+            name: "Monument to Blas de Lezo", 
+            lng: -3.6886, 
+            lat: 40.4243, 
+            description: `
+                <ul>
+                    <li>Monument from 2014</li>
+                    <li>Lived from 1689 to 1741</li>
+                    <li>Spanish admiral</li>
+                    <li>Lost his left leg, right arm and left eye</li>
+                    <li>Fought many naval battles against many great powers</li>
+                    <li>The spanish navy was the most important weapon and institution to explore, conquer and govern</li>
+                    <li>Won the battle of Cartagena (1741) against the British, ensuring spanish holdings in the new world</li>
+                </ul>`, 
+            imageURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Monumento_a_Blas_de_Lezo_%28Madrid%29_01.jpg/300px-Monumento_a_Blas_de_Lezo_%28Madrid%29_01.jpg" 
+        }
+    ];
+
+    // *** 3. 初始化地图 (添加了简单的错误处理) ***
+    try {
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v11', // 使用 v11 街道样式，更稳定
+            center: [-3.7038, 40.4168], 
+            zoom: 13,
+            pitch: 45, 
+        });
+
+        // 添加导航控件（放大缩小按钮）
+        map.addControl(new mapboxgl.NavigationControl());
+
+        // *** 4. 自动巡游逻辑 ***
+        let currentTourIndex = 0;
+        let isTourRunning = true;
+        const tourRouteKeys = monumentData.map(m => m.key); 
+        const monuments = [];
+
+        function createCustomPopup(monument) {
+            const popup = new mapboxgl.Popup({ offset: 25, closeButton: false, closeOnClick: false, maxWidth: '350px' })
+                .setHTML(`
+                    <div class="popup-content">
+                        <div class="popup-image-container">
+                            <img src="${monument.imageURL}" alt="${monument.name}" class="popup-image">
+                        </div>
+                        <div class="popup-text-area">
+                            <h3 class="popup-title">${monument.name}</h3>
+                            <div class="popup-body">${monument.description}</div>
+                        </div>
+                        <button class="close-tour-btn" data-key="${monument.key}">
+                            ${monument.key === tourRouteKeys[tourRouteKeys.length - 1] ? 'Return to Main View' : 'Next Stop →'}
+                        </button>
+                    </div>
+                `);
+            monument.popup = popup;
+            return popup;
+        }
+
+        function flyToAndOpenPopup(monument) {
+            if (!monument) return;
+
+            map.flyTo({
+                center: [monument.lng, monument.lat],
+                zoom: 15.5,
+                speed: 0.8,
+                curve: 1,
+                essential: true
+            });
+
+            setTimeout(() => {
+                const currentMarker = monuments.find(m => m.key === monument.key);
+                if (currentMarker && currentMarker.marker) {
+                     currentMarker.marker.getPopup().addTo(map);
+                }
+            }, 2500); 
+        }
+
+        function nextStop() {
+            if (!isTourRunning) return; 
+
+            if (currentTourIndex === tourRouteKeys.length - 1) {
+                isTourRunning = false;
+                map.flyTo({center: [-3.7038, 40.4168], zoom: 13, essential: true});
+                currentTourIndex = 0; 
+                return;
+            }
+
+            currentTourIndex++;
+            const nextKey = tourRouteKeys[currentTourIndex];
+            const nextMonument = monuments.find(m => m.key === nextKey);
+
+            setTimeout(() => {
+                flyToAndOpenPopup(nextMonument);
+            }, 500); 
+        }
+
+        map.on('load', () => {
+            monumentData.forEach((monument) => {
+                const el = document.createElement('div');
+                el.className = 'marker';
+                el.dataset.key = monument.key; 
+
+                const markerInstance = new mapboxgl.Marker(el)
+                    .setLngLat([monument.lng, monument.lat])
+                    .setPopup(createCustomPopup(monument)) 
+                    .addTo(map);
+                
+                monuments.push({ ...monument, marker: markerInstance });
+
+                el.addEventListener('click', () => {
+                    isTourRunning = false; 
+                    flyToAndOpenPopup(monument);
+                });
+            });
+
+            setTimeout(() => {
+                startTour();
+            }, 2000); 
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target && e.target.classList.contains('close-tour-btn')) {
+                const popupInstance = monuments.find(m => m.key === e.target.dataset.key).marker.getPopup();
+                popupInstance.remove(); 
+                
+                if (isTourRunning) {
+                    setTimeout(nextStop, 100); 
+                }
+            }
+        });
+
+        function startTour() {
+            const firstKey = tourRouteKeys[0];
+            const firstMonument = monuments.find(m => m.key === firstKey);
+            
+            currentTourIndex = 0;
+            isTourRunning = true;
+            
+            flyToAndOpenPopup(firstMonument); 
+        }
+
+        // 错误检测
+        map.on('error', (e) => {
+            console.error("Mapbox 错误:", e);
+            if (e.error && e.error.status === 401) {
+                alert("地图加载失败：Token 无效。请编辑 HTML 文件，替换为您自己的 Mapbox Token。");
+            }
+        });
+
+    } catch (err) {
+        alert("程序发生错误：" + err.message);
+    }
+</script>
+</body>
+</html>
